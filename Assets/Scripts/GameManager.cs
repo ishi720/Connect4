@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -22,10 +23,16 @@ public class GameManager : MonoBehaviour
     public Text winnerText;
     public Button restartButton;
     
+    [Header("Animation Settings")]
+    public float dropHeight = 8f;
+    public float dropSpeed = 10f;
+    public float pieceScale = 0.8f;
+    
     private int[,] board;
     private int currentPlayer = 1;
     private bool gameOver = false;
     private GameObject[,] pieceObjects;
+    private bool isDropping = false;
     
     void Start()
     {
@@ -80,7 +87,7 @@ public class GameManager : MonoBehaviour
     
     public void DropPiece(int column)
     {
-        if (gameOver) return;
+        if (gameOver || isDropping) return;
         
         // その列で一番下の空いている行を探す
         int row = GetLowestEmptyRow(column);
@@ -91,28 +98,8 @@ public class GameManager : MonoBehaviour
             return;
         }
         
-        // ピースを配置
-        PlacePiece(row, column);
-        
-        // 勝利判定
-        if (CheckWin(row, column))
-        {
-            gameOver = true;
-            ShowWinner();
-            return;
-        }
-        
-        // 引き分け判定
-        if (IsBoardFull())
-        {
-            gameOver = true;
-            ShowDraw();
-            return;
-        }
-        
-        // プレイヤー交代
-        currentPlayer = (currentPlayer == 1) ? 2 : 1;
-        UpdateTurnText();
+        // ピースを物理演算で配置
+        StartCoroutine(DropPieceWithPhysics(row, column));
     }
     
     int GetLowestEmptyRow(int column)
@@ -127,27 +114,71 @@ public class GameManager : MonoBehaviour
         return -1;
     }
     
-    void PlacePiece(int row, int column)
+    IEnumerator DropPieceWithPhysics(int targetRow, int column)
     {
-        board[row, column] = currentPlayer;
+        isDropping = true;
+        board[targetRow, column] = currentPlayer;
         
-        // ピースのビジュアルを作成
+        // ピースの最終位置を計算
         float boardWidth = (columns - 1) * spacing;
         float boardHeight = (rows - 1) * spacing;
         Vector3 startPos = new Vector3(-boardWidth / 2, -boardHeight / 2, 0);
-        Vector3 position = startPos + new Vector3(column * spacing, row * spacing, -0.1f);
+        Vector3 targetPosition = startPos + new Vector3(column * spacing, targetRow * spacing, -0.1f);
         
-        GameObject piece = Instantiate(piecePrefab, position, Quaternion.identity);
+        // ピースをドロップ位置に作成
+        Vector3 dropPosition = new Vector3(targetPosition.x, targetPosition.y + dropHeight, targetPosition.z);
+        GameObject piece = Instantiate(piecePrefab, dropPosition, Quaternion.identity);
         piece.transform.parent = transform;
-        piece.name = $"Piece_P{currentPlayer}_{row}_{column}";
+        piece.name = $"Piece_P{currentPlayer}_{targetRow}_{column}";
+        piece.transform.localScale = new Vector3(pieceScale, pieceScale, 1);
         
+        // SpriteRendererの色を設定
         SpriteRenderer sr = piece.GetComponent<SpriteRenderer>();
         if (sr != null)
         {
             sr.color = (currentPlayer == 1) ? player1Color : player2Color;
+            sr.sortingOrder = 1; // ボードより前面に表示
         }
         
-        pieceObjects[row, column] = piece;
+        pieceObjects[targetRow, column] = piece;
+        
+        // スムーズに落下（アニメーション）
+        float currentY = dropPosition.y;
+        while (currentY > targetPosition.y)
+        {
+            currentY -= dropSpeed * Time.deltaTime;
+            if (currentY < targetPosition.y)
+            {
+                currentY = targetPosition.y;
+            }
+            piece.transform.position = new Vector3(targetPosition.x, currentY, targetPosition.z);
+            yield return null;
+        }
+        
+        // ぴったり最終位置に配置
+        piece.transform.position = targetPosition;
+        
+        isDropping = false;
+        
+        // 勝利判定
+        if (CheckWin(targetRow, column))
+        {
+            gameOver = true;
+            ShowWinner();
+            yield break;
+        }
+        
+        // 引き分け判定
+        if (IsBoardFull())
+        {
+            gameOver = true;
+            ShowDraw();
+            yield break;
+        }
+        
+        // プレイヤー交代
+        currentPlayer = (currentPlayer == 1) ? 2 : 1;
+        UpdateTurnText();
     }
     
     bool CheckWin(int row, int column)
@@ -278,6 +309,7 @@ public class GameManager : MonoBehaviour
         
         currentPlayer = 1;
         gameOver = false;
+        isDropping = false;
         
         UpdateTurnText();
         
