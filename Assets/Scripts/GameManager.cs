@@ -26,7 +26,6 @@ public class GameManager : MonoBehaviour
     [Header("Animation Settings")]
     public float dropHeight = 8f;
     public float dropSpeed = 10f;
-    public float pieceScale = 0.8f;
     
     private int[,] board;
     private int currentPlayer = 1;
@@ -130,7 +129,6 @@ public class GameManager : MonoBehaviour
         GameObject piece = Instantiate(piecePrefab, dropPosition, Quaternion.identity);
         piece.transform.parent = transform;
         piece.name = $"Piece_P{currentPlayer}_{targetRow}_{column}";
-        piece.transform.localScale = new Vector3(pieceScale, pieceScale, 1);
         
         // SpriteRendererの色を設定
         SpriteRenderer sr = piece.GetComponent<SpriteRenderer>();
