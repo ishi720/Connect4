@@ -22,10 +22,16 @@ public class GameManager : MonoBehaviour
     public Text turnText;
     public Text winnerText;
     public Button restartButton;
+    public Button vsPlayerButton;
+    public Button vsComputerButton;
+    public Dropdown difficultyDropdown;
     
     [Header("Animation Settings")]
     public float dropHeight = 8f;
     public float dropSpeed = 10f;
+    
+    [Header("AI Settings")]
+    public float aiThinkTime = 0.5f;
     
     private int[,] board;
     private int currentPlayer = 1;
@@ -33,12 +39,18 @@ public class GameManager : MonoBehaviour
     private GameObject[,] pieceObjects;
     private bool isDropping = false;
     
+    // AI settings
+    private bool isVsComputer = false;
+    private int aiDifficulty = 1; // 0 = Easy, 1 = Medium, 2 = Hard
+    private bool gameStarted = false;
+    
     void Start()
     {
         board = new int[rows, columns];
         pieceObjects = new GameObject[rows, columns];
-        CreateBoard();
-        UpdateTurnText();
+        
+        // Show game mode selection
+        ShowGameModeSelection();
         
         if (restartButton != null)
         {
@@ -46,9 +58,63 @@ public class GameManager : MonoBehaviour
             restartButton.gameObject.SetActive(false);
         }
         
+        if (vsPlayerButton != null)
+        {
+            vsPlayerButton.onClick.AddListener(() => StartGame(false));
+        }
+        
+        if (vsComputerButton != null)
+        {
+            vsComputerButton.onClick.AddListener(() => StartGame(true));
+        }
+        
         if (winnerText != null)
         {
             winnerText.gameObject.SetActive(false);
+        }
+        
+        if (turnText != null)
+        {
+            turnText.gameObject.SetActive(false);
+        }
+    }
+    
+    void ShowGameModeSelection()
+    {
+        if (vsPlayerButton != null)
+            vsPlayerButton.gameObject.SetActive(true);
+        if (vsComputerButton != null)
+            vsComputerButton.gameObject.SetActive(true);
+        if (difficultyDropdown != null)
+            difficultyDropdown.gameObject.SetActive(true);
+    }
+    
+    void HideGameModeSelection()
+    {
+        if (vsPlayerButton != null)
+            vsPlayerButton.gameObject.SetActive(false);
+        if (vsComputerButton != null)
+            vsComputerButton.gameObject.SetActive(false);
+        if (difficultyDropdown != null)
+            difficultyDropdown.gameObject.SetActive(false);
+    }
+    
+    void StartGame(bool vsComputer)
+    {
+        isVsComputer = vsComputer;
+        if (difficultyDropdown != null)
+        {
+            aiDifficulty = difficultyDropdown.value;
+        }
+        
+        HideGameModeSelection();
+        CreateBoard();
+        gameStarted = true;
+        UpdateTurnText();
+        
+        if (turnText != null)
+        {
+            turnText.gameObject.SetActive(true);
         }
     }
     
@@ -86,7 +152,10 @@ public class GameManager : MonoBehaviour
     
     public void DropPiece(int column)
     {
-        if (gameOver || isDropping) return;
+        if (!gameStarted || gameOver || isDropping) return;
+        
+        // コンピューターのターンの場合は人間の入力を無視
+        if (isVsComputer && currentPlayer == 2) return;
         
         // その列で一番下の空いている行を探す
         int row = GetLowestEmptyRow(column);
@@ -177,6 +246,266 @@ public class GameManager : MonoBehaviour
         // プレイヤー交代
         currentPlayer = (currentPlayer == 1) ? 2 : 1;
         UpdateTurnText();
+        
+        // AIのターン
+        if (isVsComputer && currentPlayer == 2 && !gameOver)
+        {
+            StartCoroutine(AIMove());
+        }
+    }
+    
+    IEnumerator AIMove()
+    {
+        // 少し待ってから手を指す
+        yield return new WaitForSeconds(aiThinkTime);
+        
+        int bestColumn = GetBestMove();
+        int row = GetLowestEmptyRow(bestColumn);
+        
+        if (row != -1)
+        {
+            StartCoroutine(DropPieceWithPhysics(row, bestColumn));
+        }
+    }
+    
+    int GetBestMove()
+    {
+        switch (aiDifficulty)
+        {
+            case 0: // Easy - ランダムに選択
+                return GetRandomMove();
+            case 1: // Medium - 簡単な戦略
+                return GetMediumMove();
+            case 2: // Hard - Minimaxアルゴリズム
+                return GetMinimaxMove();
+            default:
+                return GetRandomMove();
+        }
+    }
+    
+    int GetRandomMove()
+    {
+        System.Collections.Generic.List<int> validColumns = new System.Collections.Generic.List<int>();
+        
+        for (int col = 0; col < columns; col++)
+        {
+            if (GetLowestEmptyRow(col) != -1)
+            {
+                validColumns.Add(col);
+            }
+        }
+        
+        if (validColumns.Count > 0)
+        {
+            return validColumns[Random.Range(0, validColumns.Count)];
+        }
+        
+        return 0;
+    }
+    
+    int GetMediumMove()
+    {
+        // 1. 勝てる手があれば勝つ
+        for (int col = 0; col < columns; col++)
+        {
+            int row = GetLowestEmptyRow(col);
+            if (row != -1)
+            {
+                board[row, col] = 2;
+                bool canWin = CheckWin(row, col);
+                board[row, col] = 0;
+                
+                if (canWin)
+                    return col;
+            }
+        }
+        
+        // 2. 相手の勝ちを阻止
+        for (int col = 0; col < columns; col++)
+        {
+            int row = GetLowestEmptyRow(col);
+            if (row != -1)
+            {
+                board[row, col] = 1;
+                bool opponentCanWin = CheckWin(row, col);
+                board[row, col] = 0;
+                
+                if (opponentCanWin)
+                    return col;
+            }
+        }
+        
+        // 3. 中央を優先
+        int center = columns / 2;
+        if (GetLowestEmptyRow(center) != -1)
+        {
+            return center;
+        }
+        
+        // 4. ランダム
+        return GetRandomMove();
+    }
+    
+    int GetMinimaxMove()
+    {
+        int bestScore = int.MinValue;
+        int bestColumn = 0;
+        int depth = 4; // 探索深さ
+        
+        for (int col = 0; col < columns; col++)
+        {
+            int row = GetLowestEmptyRow(col);
+            if (row != -1)
+            {
+                // 手を試す
+                board[row, col] = 2;
+                int score = Minimax(depth - 1, false, int.MinValue, int.MaxValue);
+                board[row, col] = 0;
+                
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestColumn = col;
+                }
+            }
+        }
+        
+        return bestColumn;
+    }
+    
+    int Minimax(int depth, bool isMaximizing, int alpha, int beta)
+    {
+        // 終了条件チェック
+        int winner = CheckWinner();
+        if (winner == 2) return 1000 + depth;
+        if (winner == 1) return -1000 - depth;
+        if (IsBoardFull() || depth == 0) return EvaluateBoard();
+        
+        if (isMaximizing)
+        {
+            int maxScore = int.MinValue;
+            for (int col = 0; col < columns; col++)
+            {
+                int row = GetLowestEmptyRow(col);
+                if (row != -1)
+                {
+                    board[row, col] = 2;
+                    int score = Minimax(depth - 1, false, alpha, beta);
+                    board[row, col] = 0;
+                    maxScore = Mathf.Max(maxScore, score);
+                    alpha = Mathf.Max(alpha, score);
+                    if (beta <= alpha) break;
+                }
+            }
+            return maxScore;
+        }
+        else
+        {
+            int minScore = int.MaxValue;
+            for (int col = 0; col < columns; col++)
+            {
+                int row = GetLowestEmptyRow(col);
+                if (row != -1)
+                {
+                    board[row, col] = 1;
+                    int score = Minimax(depth - 1, true, alpha, beta);
+                    board[row, col] = 0;
+                    minScore = Mathf.Min(minScore, score);
+                    beta = Mathf.Min(beta, score);
+                    if (beta <= alpha) break;
+                }
+            }
+            return minScore;
+        }
+    }
+    
+    int EvaluateBoard()
+    {
+        int score = 0;
+        
+        // 中央列を優先
+        int centerColumn = columns / 2;
+        int centerCount = 0;
+        for (int row = 0; row < rows; row++)
+        {
+            if (board[row, centerColumn] == 2)
+                centerCount++;
+        }
+        score += centerCount * 3;
+        
+        // すべての方向で評価
+        score += EvaluateDirection(0, 1);  // 横
+        score += EvaluateDirection(1, 0);  // 縦
+        score += EvaluateDirection(1, 1);  // 斜め右上
+        score += EvaluateDirection(1, -1); // 斜め右下
+        
+        return score;
+    }
+    
+    int EvaluateDirection(int deltaRow, int deltaCol)
+    {
+        int score = 0;
+        
+        for (int row = 0; row < rows; row++)
+        {
+            for (int col = 0; col < columns; col++)
+            {
+                score += EvaluateWindow(row, col, deltaRow, deltaCol, 2);
+                score -= EvaluateWindow(row, col, deltaRow, deltaCol, 1);
+            }
+        }
+        
+        return score;
+    }
+    
+    int EvaluateWindow(int startRow, int startCol, int deltaRow, int deltaCol, int player)
+    {
+        int playerCount = 0;
+        int emptyCount = 0;
+        
+        for (int i = 0; i < 4; i++)
+        {
+            int row = startRow + i * deltaRow;
+            int col = startCol + i * deltaCol;
+            
+            if (row < 0 || row >= rows || col < 0 || col >= columns)
+                return 0;
+            
+            if (board[row, col] == player)
+                playerCount++;
+            else if (board[row, col] == 0)
+                emptyCount++;
+        }
+        
+        if (playerCount == 4) return 100;
+        if (playerCount == 3 && emptyCount == 1) return 5;
+        if (playerCount == 2 && emptyCount == 2) return 2;
+        
+        return 0;
+    }
+    
+    int CheckWinner()
+    {
+        for (int row = 0; row < rows; row++)
+        {
+            for (int col = 0; col < columns; col++)
+            {
+                if (board[row, col] != 0)
+                {
+                    int tempPlayer = currentPlayer;
+                    currentPlayer = board[row, col];
+                    
+                    if (CheckWin(row, col))
+                    {
+                        currentPlayer = tempPlayer;
+                        return board[row, col];
+                    }
+                    
+                    currentPlayer = tempPlayer;
+                }
+            }
+        }
+        return 0;
     }
     
     bool CheckWin(int row, int column)
@@ -244,8 +573,24 @@ public class GameManager : MonoBehaviour
     {
         if (turnText != null)
         {
-            turnText.text = $"プレイヤー {currentPlayer} のターン";
-            turnText.color = (currentPlayer == 1) ? player1Color : player2Color;
+            if (isVsComputer)
+            {
+                if (currentPlayer == 1)
+                {
+                    turnText.text = "あなたのターン";
+                    turnText.color = player1Color;
+                }
+                else
+                {
+                    turnText.text = "コンピューターのターン";
+                    turnText.color = player2Color;
+                }
+            }
+            else
+            {
+                turnText.text = $"プレイヤー {currentPlayer} のターン";
+                turnText.color = (currentPlayer == 1) ? player1Color : player2Color;
+            }
         }
     }
     
@@ -253,7 +598,21 @@ public class GameManager : MonoBehaviour
     {
         if (winnerText != null)
         {
-            winnerText.text = $"プレイヤー {currentPlayer} の勝利！";
+            if (isVsComputer)
+            {
+                if (currentPlayer == 1)
+                {
+                    winnerText.text = "あなたの勝ち！";
+                }
+                else
+                {
+                    winnerText.text = "コンピューターの勝ち！";
+                }
+            }
+            else
+            {
+                winnerText.text = $"プレイヤー {currentPlayer} の勝利！";
+            }
             winnerText.color = (currentPlayer == 1) ? player1Color : player2Color;
             winnerText.gameObject.SetActive(true);
         }
@@ -291,7 +650,7 @@ public class GameManager : MonoBehaviour
     
     public void RestartGame()
     {
-        // ボードをリセット
+        // ボードをクリア
         for (int row = 0; row < rows; row++)
         {
             for (int col = 0; col < columns; col++)
@@ -305,25 +664,34 @@ public class GameManager : MonoBehaviour
             }
         }
         
+        // ボードスロットを削除
+        BoardSlot[] slots = FindObjectsOfType<BoardSlot>();
+        foreach (BoardSlot slot in slots)
+        {
+            Destroy(slot.gameObject);
+        }
+        
         currentPlayer = 1;
         gameOver = false;
         isDropping = false;
-        
-        UpdateTurnText();
-        
-        if (turnText != null)
-        {
-            turnText.gameObject.SetActive(true);
-        }
+        gameStarted = false;
         
         if (winnerText != null)
         {
             winnerText.gameObject.SetActive(false);
         }
         
+        if (turnText != null)
+        {
+            turnText.gameObject.SetActive(false);
+        }
+        
         if (restartButton != null)
         {
             restartButton.gameObject.SetActive(false);
         }
+        
+        // ゲームモード選択に戻る
+        ShowGameModeSelection();
     }
 }
