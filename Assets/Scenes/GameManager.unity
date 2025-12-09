@@ -226,7 +226,7 @@ Camera:
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.6320754, g: 0.6320754, b: 0.6320754, a: 0}
+  m_BackGroundColor: {r: 0, g: 0, b: 0, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -595,12 +595,14 @@ MonoBehaviour:
   spacing: 1.1
   piecePrefab: {fileID: 3676138885066257504, guid: 071176aa22657f348bc52625b0d5a164, type: 3}
   boardSlotPrefab: {fileID: 4062317722173438054, guid: bae6e49f505db424eadedfaa92b5acc3, type: 3}
-  player1Color: {r: 1, g: 0, b: 0, a: 1}
-  player2Color: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
-  boardColor: {r: 0, g: 0, b: 1, a: 1}
+  player1Color: {r: 0.7921569, g: 0.20033343, b: 0.17647056, a: 1}
+  player2Color: {r: 0.17647058, g: 0.79607844, b: 0.24196787, a: 1}
+  boardColor: {r: 0.46226418, g: 0.46226418, b: 0.46226418, a: 1}
   turnText: {fileID: 2143688176}
   winnerText: {fileID: 660993306}
   restartButton: {fileID: 1187248003}
+  dropHeight: 8
+  dropSpeed: 10
 --- !u!4 &1271225757
 Transform:
   m_ObjectHideFlags: 0
